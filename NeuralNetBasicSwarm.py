@@ -1,0 +1,105 @@
+import numpy as np
+from Utils import mean_squared_error as cost
+from sklearn.utils import check_random_state
+#from Utils import sigmoid
+from scipy.special import expit as sigmoid
+
+
+class BasicSwarm(object):
+    def __init__(self, n_in, n_hidden, n_out, path, classes,
+                 min_weight=-3, max_weight=3, min_v=-2, max_v=2,
+                 num_particles=10, random_state=None):
+        self.n_in = n_in
+        self.n_hidden = n_hidden
+        self.n_out = n_out
+        self.path = path
+        self.path_len = len(path)
+        self.num_particles = num_particles
+        self.min_weight = min_weight
+        self.max_weight = max_weight
+        self.min_v = min_v
+        self.max_v = max_v
+        self.rng = check_random_state(random_state)
+        self.classes = classes
+        self.cost = cost
+
+        # particle weights and velocities
+        self.p_weight = self.rng.uniform(self.min_weight,
+                                         self.max_weight,
+                                         (self.num_particles, self.path_len))
+
+        self.p_v = self.rng.uniform(self.min_v, self.max_v,
+                                    (self.num_particles, self.path_len))
+
+        # particle bests
+        self.p_best_scores = [np.inf for _ in xrange(self.num_particles)]
+        self.p_best_weights = [np.zeros((self.path_len,)) for _ in xrange(self.num_particles)]
+
+        # swarm best
+        self.s_best_score = np.inf
+        self.s_best_weight = np.zeros((self.path_len, ))
+
+        # stats
+        self.num_evals = 0
+
+    def forward(self, W_in, X):
+        # construct network
+        tmp = X
+        for i in xrange(len(W_in)):
+            if i == 0:
+                W, W_b = W_in[i][:self.n_in], W_in[i][self.n_in:]
+            else:
+                W, W_b = W_in[i][:self.n_hidden[i-1]], W_in[i][self.n_hidden[i-1]:]
+            tmp = sigmoid(np.dot(tmp, W) + W_b)
+
+        return tmp
+
+    #def cost(self, y, y_pred):
+    #    return mean_squared_error(y, y_pred)
+
+    def eval_pnn(self, W, path, index, X, y):
+        # set up
+        for i in xrange(len(W)):
+            if path[i] is not None:
+                W[i][path[i]] = self.p_weight[index][i]
+
+        # evalute
+        y_pred = self.forward(W, X)
+        score = self.cost(y, y_pred)
+
+        # update pbest
+        if score < self.p_best_scores[i]:
+            self.p_best_scores[i] = score
+            self.p_best_weights[i] = np.copy(self.p_weight[i])
+
+        self.num_evals += 1
+        return score
+
+    def evaluate(self, gvn, X, y, index):
+        score = self.eval_pnn(gvn[:], self.path, index, X, y)
+
+        # update swarm best using current scores
+        if score < self.s_best_score:
+            self.s_best_score = score
+            self.s_best_weight = np.copy(self.p_weight[index])
+
+        return score
+
+    def update(self, w, c1, c2, index, gbest=None):
+        if gbest is None:
+            gbest = self.s_best_weight
+
+        # update velocity
+        r1, r2 = self.rng.random_sample((self.path_len,)), self.rng.random_sample((self.path_len,))
+        v = (w * self.p_v[index]) + (c1 * r1 * (self.p_best_weights[index] - self.p_weight[index])) + (c2 * r2 * (gbest - self.p_weight[index]))
+
+        # velocity clamping to prevent explosions
+        v = np.clip(v, self.min_v, self.max_v, out=v)
+
+        # update position
+        p = self.p_weight[index] + v
+        self.p_weight[index] = p
+        self.p_v[index] = v
+
+    def get_num_evals(self):
+        return self.num_evals
