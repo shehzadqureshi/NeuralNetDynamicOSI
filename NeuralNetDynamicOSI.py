@@ -1,19 +1,11 @@
 import numpy as np
-from sklearn.base import BaseEstimator, ClassifierMixin
-from sklearn.utils import check_random_state, array2d
-from Utils import mean_squared_error as cost
-from itertools import tee, izip, product
-from scipy.special import expit as sigmoid
 from scipy.stats import linregress
 from sklearn import cross_validation as cv
 from collections import deque
-from operator import attrgetter
-from sklearn.preprocessing import label_binarize, MultiLabelBinarizer
-from NeuralNetBasicSwarm import BasicSwarm
+from sklearn.preprocessing import label_binarize
 from NeuralNetBasicOSI import BasicOSI
 
 
-# class DynamicOSI(BaseEstimator, ClassifierMixin):
 class DynamicOSI(BasicOSI):
     def __init__(self, n_hidden, random_state=None, num_particles=20, num_swarms=5, method='random',
                  min_weight=-3, max_weight=3, min_v=-2, max_v=2, window=10, validation_size=0.25,
