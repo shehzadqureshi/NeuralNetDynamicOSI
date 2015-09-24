@@ -1,12 +1,11 @@
 import numpy as np
 from Utils import mean_squared_error as cost
 from sklearn.utils import check_random_state
-#from Utils import sigmoid
 from scipy.special import expit as sigmoid
 
 
 class BasicSwarm(object):
-    def __init__(self, n_in, n_hidden, n_out, path, classes,
+    def __init__(self, n_in, n_hidden, n_out, path,
                  min_weight=-3, max_weight=3, min_v=-2, max_v=2,
                  num_particles=10, random_state=None):
         self.n_in = n_in
@@ -20,7 +19,6 @@ class BasicSwarm(object):
         self.min_v = min_v
         self.max_v = max_v
         self.rng = check_random_state(random_state)
-        self.classes = classes
         self.cost = cost
 
         # particle weights and velocities
@@ -54,23 +52,20 @@ class BasicSwarm(object):
 
         return tmp
 
-    #def cost(self, y, y_pred):
-    #    return mean_squared_error(y, y_pred)
-
-    def eval_pnn(self, W, path, index, X, y):
+    def eval_pnn(self, W, path, p_index, X, y):
         # set up
         for i in xrange(len(W)):
             if path[i] is not None:
-                W[i][path[i]] = self.p_weight[index][i]
+                W[i][path[i]] = self.p_weight[p_index][i]
 
         # evalute
         y_pred = self.forward(W, X)
         score = self.cost(y, y_pred)
 
         # update pbest
-        if score < self.p_best_scores[i]:
-            self.p_best_scores[i] = score
-            self.p_best_weights[i] = np.copy(self.p_weight[i])
+        if score < self.p_best_scores[p_index]:
+            self.p_best_scores[p_index] = score
+            self.p_best_weights[p_index] = np.copy(self.p_weight[p_index])
 
         self.num_evals += 1
         return score
@@ -85,21 +80,22 @@ class BasicSwarm(object):
 
         return score
 
-    def update(self, w, c1, c2, index, gbest=None):
+    def update(self, w, c1, c2, p_index, gbest=None):
         if gbest is None:
             gbest = self.s_best_weight
 
         # update velocity
         r1, r2 = self.rng.random_sample((self.path_len,)), self.rng.random_sample((self.path_len,))
-        v = (w * self.p_v[index]) + (c1 * r1 * (self.p_best_weights[index] - self.p_weight[index])) + (c2 * r2 * (gbest - self.p_weight[index]))
+        v = (w * self.p_v[p_index]) + (c1 * r1 * (self.p_best_weights[p_index] - self.p_weight[p_index])) + (c2 * r2 * (gbest - self.p_weight[p_index]))
 
         # velocity clamping to prevent explosions
         v = np.clip(v, self.min_v, self.max_v, out=v)
 
         # update position
-        p = self.p_weight[index] + v
-        self.p_weight[index] = p
-        self.p_v[index] = v
+        p = self.p_weight[p_index] + v
+        p = np.clip(p, self.min_weight, self.max_weight, out=p)
+        self.p_weight[p_index] = p
+        self.p_v[p_index] = v
 
     def get_num_evals(self):
         return self.num_evals

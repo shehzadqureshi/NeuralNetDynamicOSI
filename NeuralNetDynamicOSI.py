@@ -7,18 +7,18 @@ from NeuralNetBasicOSI import BasicOSI
 
 
 class DynamicOSI(BasicOSI):
-    def __init__(self, n_hidden, random_state=None, num_particles=20, num_swarms=5, method='random',
+    def __init__(self, n_hidden, random_state=None, num_particles=20, num_dynamic_swarms=5, method='random',
                  min_weight=-3, max_weight=3, min_v=-2, max_v=2, window=10, validation_size=0.25,
                  c1=1.49445, c2=1.49445, w=0.729, verbose=False):
         super(DynamicOSI, self).__init__(n_hidden, random_state=random_state, num_particles=num_particles,
                                          min_weight=min_weight, max_weight=max_weight, min_v=min_v, max_v=max_v,
                                          window=window, validation_size=validation_size,
                                          c1=c1, c2=c2, w=w, verbose=verbose)
-        self.num_swarms = num_swarms
+        self.num_dynamic_swarms = num_dynamic_swarms
         self.method = method
 
     def select_swarms(self, j, scores):
-        if self.num_swarms < 0:
+        if self.num_dynamic_swarms < 0:
             indices = np.arange(len(self.paths))
         elif self.method == "random":
             indices = self.select_swarms_random()
@@ -34,23 +34,23 @@ class DynamicOSI(BasicOSI):
         return indices
 
     def select_swarms_random(self):
-        num_swarms = min(len(self.paths), self.num_swarms)
+        num_swarms = min(len(self.paths), self.num_dynamic_swarms)
         indices = self.random_state.randint(0, len(self.paths), num_swarms)
         return indices
 
     def select_swarms_round_robin(self, index):
-        indices = np.mod(np.arange(self.num_swarms) + index, len(self.paths))
+        indices = np.mod(np.arange(self.num_dynamic_swarms) + index, len(self.paths))
         return indices
 
     def select_swarms_iterative(self, index):
-        start = self.num_swarms * index
-        end = start + self.num_swarms
+        start = self.num_dynamic_swarms * index
+        end = start + self.num_dynamic_swarms
         indices = np.mod(np.arange(start, end), len(self.paths))
         return indices
 
     def select_swarms_worst_probability(self, scores):
-        scores = scores / np.sum(scores)
-        indices = self.random_state.choice(np.arange(len(self.paths)), self.num_swarms, replace=False, p=scores)
+        nscores = scores / np.sum(scores)
+        indices = self.random_state.choice(np.arange(len(self.paths)), self.num_dynamic_swarms, replace=False, p=nscores)
         return indices
 
     def fit(self, X, y):
@@ -75,20 +75,20 @@ class DynamicOSI(BasicOSI):
         j = 0
         tmp = [1e3 - float(x * 1e3) / self.window for x in xrange(self.window)]
         window = deque(tmp, maxlen=(self.window * 5))
-        networks = deque(W, maxlen=self.window)
         self.num_evals = 0
-        num_paths = sum([len(swarm_paths[i]) for i in xrange(len(swarm_paths))])
         best_score = np.inf
-        scores = np.ones(len(self.paths, ))
+        swarm_scores = np.ones(len(self.paths, ))
 
         if self.verbose:
-            print "Fitting network {0}-{1}-{2} with {3} paths".format(self.n_in, self.n_hidden, self.n_out, num_paths)
+            print "Fitting network {0}-{1}-{2} with {3} paths".format(self.n_in, self.n_hidden, self.n_out, len(self.swarms))
 
         while True:
             j += 1
-            indices = self.select_swarms(j, scores)
+            indices = self.select_swarms(j, swarm_scores)
             for s_index in indices:
                 for p_index in xrange(self.num_particles):
+                    self.num_evals += 1
+
                     # evaluate each swarm
                     score = self.swarms[s_index].evaluate(W, X_train, y_train, p_index)
 
@@ -102,20 +102,18 @@ class DynamicOSI(BasicOSI):
                     y_pred = self.forward(Wn, X_valid)
                     score = self.cost(y_valid, y_pred)
                     if score < best_score:
+                        W = Wn[:]
                         best_score = score
-                    self.num_evals += 1
-                    W = Wn[:]
-
-                scores[s_index] = score
+                    if score < swarm_scores[s_index]:
+                        swarm_scores[s_index] = score
 
             # check termination
-            window.append(score)
-            networks.append(W[:])
+            window.append(best_score)
             r = linregress(range(self.window), list(window)[-self.window:])
             if self.verbose:
-                print j, score
+                print j, best_score
 
-            if r[0] >= 0 or score < 1e-3:
-                self.W = networks.pop()
+            if r[0] >= 0 or best_score < 1e-3:
+                self.W = W
                 self.num_generations = j
                 return self

@@ -76,7 +76,7 @@ class BasicOSI(BaseEstimator, ClassifierMixin):
         self.random_state = check_random_state(self.random_state)
         self.classes_, y = np.unique(y, return_inverse=True)
         X = array2d(X)
-        n_samples, self.n_in = X.shape
+        _, self.n_in = X.shape
         self.n_out = np.unique(y).shape[0]
 
     def init_network(self):
@@ -91,7 +91,7 @@ class BasicOSI(BaseEstimator, ClassifierMixin):
         W.append(self.random_state.uniform(self.min_weight, self.max_weight, (self.n_hidden[-1] + 1, self.n_out)))
 
         # initialize the swarms
-        self.swarms = [BasicSwarm(self.n_in, self.n_hidden, self.n_out, path, self.classes_,
+        self.swarms = [BasicSwarm(self.n_in, self.n_hidden, self.n_out, path,
                                   num_particles=self.num_particles, random_state=self.random_state,
                                   min_weight=self.min_weight, max_weight=self.max_weight,
                                   min_v=self.min_v, max_v=self.max_v)
@@ -120,17 +120,18 @@ class BasicOSI(BaseEstimator, ClassifierMixin):
         j = 0
         tmp = [1e3 - float(x * 1e3)/self.window for x in xrange(self.window)]
         window = deque(tmp, maxlen=(self.window * 5))
-        networks = deque(W, maxlen=self.window)
         self.num_evals = 0
-        num_paths = sum([len(swarm_paths[i]) for i in xrange(len(swarm_paths))])
+        best_score = np.inf
 
         if self.verbose:
-            print "Fitting network {0}-{1}-{2} with {3} paths".format(self.n_in, self.n_hidden, self.n_out, num_paths)
+            print "Fitting network {0}-{1}-{2} with {3} paths".format(self.n_in, self.n_hidden, self.n_out, len(self.swarms))
 
         while True:
             j += 1
             for s in self.swarms:
                 for p_index in xrange(self.num_particles):
+                    self.num_evals += 1
+
                     # evaluate each swarm
                     score = s.evaluate(W, X_train, y_train, p_index)
 
@@ -143,17 +144,17 @@ class BasicOSI(BaseEstimator, ClassifierMixin):
                     # evaluate gvn
                     y_pred = self.forward(Wn, X_valid)
                     score = self.cost(y_valid, y_pred)
-                    self.num_evals += 1
-                    W = Wn[:]
+                    if score < best_score:
+                        W = Wn[:]
+                        best_score = score
 
-            window.append(score)
-            networks.append(W[:])
+            window.append(best_score)
             r = linregress(range(self.window), list(window)[-self.window:])
             if self.verbose:
-                print j, score
+                print j, best_score
 
-            if r[0] >= 0 or score < 1e-3:
-                self.W = networks.pop()
+            if r[0] >= 0 or best_score < 1e-3:
+                self.W = W
                 self.num_generations = j
                 return self
 
